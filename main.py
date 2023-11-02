@@ -1,7 +1,7 @@
 import fbchat
 import requests
 import re
-import echo
+import message_handler
 
 
 def session_factory(user_agent=None):
@@ -14,4 +14,4 @@ def session_factory(user_agent=None):
 fbchat._state.session_factory = session_factory
 fbchat._state.FB_DTSG_REGEX = re.compile(r'"token":"(.*?)"')
 
-echo.start()
+message_handler.start()
