@@ -6,13 +6,17 @@ import openai
 import people
 import osrs
 import generate_image
+import bikes.bikes
+import crime
 
 from itertools import islice
 
 
 class MessageHandler(fbchat.Client):
     osrs_items = osrs.OSRSItems()
-    people_to_respond_to = people.RespondTo([sensitive.LH, sensitive.AH, sensitive.JW, sensitive.AW])
+    people_to_respond_to = []
+    respond_to = people.RespondTo(people_to_respond_to)
+    all_bikes = bikes.bikes.AllBikes()
 
     @staticmethod
     def message_object(emoji_size=None, reply_to_id=None, sticker=None, text=None):
@@ -62,10 +66,28 @@ class MessageHandler(fbchat.Client):
                         image_count_in_thread = count
                     print(image_count_in_thread)
 
+                case "!bike":
+                    message = self.message_object()
+                    message.reply_to_id = message_object.uid
+                    print("searching for " + message_object.text.replace("!bike ", "").strip())
+                    bike_info = self.all_bikes.find(message_object.text.replace("!bike ", "").strip())
+                    if bike_info:
+                        message.text = bike_info
+                    else:
+                        message.text = "No info for this bike"
+                    self.send(message, thread_id=thread_id, thread_type=thread_type)
+
+                case "!crime":
+                    crime.create_plot_from_postcode_at(message_object.text.replace("!crime ", ""), "tmp_plot.png")
+                    self.sendLocalImage("tmp_plot.png", self.message_object(), thread_id=thread_id,
+                                        thread_type=thread_type)
+
                 case _:
+                    if self.fetchUserInfo(author_id)[author_id].name not in self.people_to_respond_to:
+                        return
                     message = self.message_object()
                     message.text = \
-                        self.people_to_respond_to.get_response_from_name_and_message(
+                        self.respond_to.get_response_from_name_and_message(
                             self.fetchUserInfo(author_id)[author_id].name, message_object.text)
                     self.send(message, thread_id=thread_id, thread_type=thread_type)
 
