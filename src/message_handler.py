@@ -6,8 +6,8 @@ import openai
 import people
 import osrs
 import generate_image
-import bikes.bikes
 import crime
+import bikes
 
 from itertools import islice
 
@@ -16,7 +16,7 @@ class MessageHandler(fbchat.Client):
     osrs_items = osrs.OSRSItems()
     people_to_respond_to = []
     respond_to = people.RespondTo(people_to_respond_to)
-    all_bikes = bikes.bikes.AllBikes()
+    all_bikes = bikes.AllBikes()
 
     @staticmethod
     def message_object(emoji_size=None, reply_to_id=None, sticker=None, text=None):

@@ -10,7 +10,7 @@ def join_and_lower(message):
 
 class AllBikes:
     def __init__(self):
-        self.csv_file = open('bikes/all_bikez_curated.csv', newline='', encoding='utf-8')
+        self.csv_file = open('src/all_bikez_curated.csv', newline='', encoding='utf-8')
         self.csv_reader = csv.DictReader(self.csv_file)
 
     @staticmethod
@@ -25,7 +25,6 @@ class AllBikes:
         self.csv_file.seek(0)
 
         search_year = re.findall(r'\b(19\d{2}|20\d{2})\b', bike)
-        print(search_year)
 
         if search_year:
             search_year = search_year[0]
@@ -58,6 +57,12 @@ class AllBikes:
                 #is the year distance closer OR equal to what we currently have?
                 if row_year_lev_distance <= year_lev_distance:
                     year_lev_distance = row_year_lev_distance
+
+                    #is the year row a valid int?
+                    try:
+                        int(row["Year"])
+                    except ValueError:
+                        continue
 
                     #is the year difference closer?
                     if search_year and year_difference >= abs(int(search_year) - int(row["Year"])):
