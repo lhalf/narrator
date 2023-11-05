@@ -39,3 +39,7 @@ def save_to_plot_at(crimes, filepath):
 def create_plot_from_postcode_at(postcode, filepath):
     lat, long = get_lat_long_from_postcode(postcode)
     save_to_plot_at(get_crimes_from_lat_long(lat, long), filepath)
+
+
+lat, long = get_lat_long_from_postcode("M146AL")
+get_crimes_from_lat_long(lat, long)
