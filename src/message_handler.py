@@ -9,6 +9,7 @@ import generate_image
 import crime
 import bikes
 import speech
+import upload_fix
 
 from itertools import islice
 import pathlib
@@ -23,6 +24,9 @@ class MessageHandler(fbchat.Client):
     @staticmethod
     def message_object(emoji_size=None, reply_to_id=None, sticker=None, text=None):
         return fbchat.Message(emoji_size=emoji_size, sticker=sticker, text=text, reply_to_id=reply_to_id)
+
+    def _upload(self, files, voice_clip=False):
+        return upload_fix.upload(self, files, voice_clip=voice_clip)
 
     def onMessage(
             self,
