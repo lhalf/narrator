@@ -1,4 +1,4 @@
-import sensitive
+from src import sensitive
 import chat
 import generate_text
 

@@ -1,15 +1,17 @@
 import fbchat
 
 import cookies
-import sensitive
+from src import sensitive
 import openai
 import people
 import osrs
 import generate_image
 import crime
 import bikes
+import speech
 
 from itertools import islice
+import pathlib
 
 
 class MessageHandler(fbchat.Client):
@@ -43,12 +45,24 @@ class MessageHandler(fbchat.Client):
                                          thread_type=thread_type)
 
                 case "!gen":
+                    message = self.message_object()
+                    message.reply_to_id = message_object.uid
                     image_url = generate_image.get_url_from(message_object.text.replace("!gen ", ""))
-                    self.sendRemoteImage(image_url, self.message_object(), thread_id=thread_id,
+                    self.sendRemoteImage(image_url, message, thread_id=thread_id,
                                          thread_type=thread_type)
+
+                case "!say":
+                    message = self.message_object()
+                    message.reply_to_id = message_object.uid
+                    speech.create_audio_file_from(message_object.text.replace("!say ", ""))
+                    try:
+                        self.sendLocalVoiceClips(["tmp.mp3"], message=message, thread_id=thread_id, thread_type=thread_type)
+                    except fbchat.FBchatException:
+                        print("Failed to send text to speech")
 
                 case "!examine":
                     message = self.message_object()
+                    message.reply_to_id = message_object.uid
                     message.text = self.osrs_items.get_examine_text_from_item_name(
                         message_object.text.replace("!examine ", ""))
                     self.send(message, thread_id=thread_id, thread_type=thread_type)
@@ -78,8 +92,14 @@ class MessageHandler(fbchat.Client):
                     self.send(message, thread_id=thread_id, thread_type=thread_type)
 
                 case "!crime":
-                    crime.create_plot_from_postcode_at(message_object.text.replace("!crime ", ""), "tmp_plot.png")
-                    self.sendLocalImage("tmp_plot.png", self.message_object(), thread_id=thread_id,
+                    message = self.message_object()
+                    message.reply_to_id = message_object.uid
+                    postcode = message_object.text.replace("!crime ", "")
+                    lat, long = crime.get_lat_long_from_postcode(postcode)
+                    location = fbchat.LocationAttachment(latitude=lat, longitude=long, address=postcode, uid=self.uid)
+                    self.sendLocation(location, message, thread_id=thread_id, thread_type=thread_type)
+                    crime.create_plot_from_postcode_at(postcode, "tmp_plot.png")
+                    self.sendLocalImage("tmp_plot.png", message, thread_id=thread_id,
                                         thread_type=thread_type)
 
                 case _:

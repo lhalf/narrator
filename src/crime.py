@@ -2,6 +2,7 @@ import requests
 import matplotlib.pyplot as plt
 
 
+
 def get_lat_long_from_postcode(postcode):
     response = requests.get(f"https://api.postcodes.io/postcodes/{postcode}")
     if response.status_code != 200:
