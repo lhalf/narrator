@@ -1,133 +1,119 @@
-import fbchat
-
-import cookies
-from src import sensitive
-import openai
-import people
-import osrs
-import generate_image
-import crime
-import bikes
-import speech
-import upload_fix
-import command_handler
-
 from itertools import islice
 
+from fbchat_muqit import Client, EventType, ImageAttachment
 
-class MessageHandler(fbchat.Client):
+import bikes
+import command_handler
+import crime
+import generate_image
+import osrs
+import people
+import speech
 
-    def __init__(self, email, password, session_cookies):
-        super().__init__(email, password, session_cookies)
+cookies_file = "cookies.json"
+generated_image_file = "tmp_image.png"
+voice_clip_file = "tmp.mp3"
+crime_plot_file = "tmp_plot.png"
+
+
+class MessageHandler:
+
+    def __init__(self, client):
+        self.client = client
         self.osrs_items = osrs.OSRSItems()
         self.people_to_respond_to = []
         self.respond_to = people.RespondTo(self.people_to_respond_to)
         self.all_bikes = bikes.AllBikes()
 
-    def onMessage(
-            self,
-            mid=None,
-            author_id=None,
-            message=None,
-            message_object=None,
-            thread_id=None,
-            thread_type=fbchat.ThreadType.USER,
-            ts=None,
-            metadata=None,
-            msg=None,
-    ):
-        if author_id == self.uid:
+    async def on_message(self, message):
+        if message.sender_id == self.client.uid:
             return
 
-        command, user_input = command_handler.extract_from(message_object)
+        command, user_input = command_handler.extract_from(message)
 
         match command:
             case "genfill":
-                image_url = generate_image.get_filled_url_from(user_input,"group_full.png", "group.png")
-                self.reply_with_image_at_url(message_object, thread_id, thread_type, image_url)
+                generate_image.save_filled_at(user_input, "group_full.png", "group.png", generated_image_file)
+                await self.reply_with_local_image_at(message, generated_image_file)
 
             case "gen":
-                image_url = generate_image.get_url_from(user_input)
-                self.reply_with_image_at_url(message_object, thread_id, thread_type, image_url)
+                generate_image.save_generated_at(user_input, generated_image_file)
+                await self.reply_with_local_image_at(message, generated_image_file)
 
             case "say":
-                self.reply_with_local_voice_clip_from(message_object, thread_id, thread_type, user_input)
+                await self.reply_with_local_voice_clip_from(message, user_input)
 
             case "examine":
                 examine_text = self.osrs_items.get_examine_text_from_item_name(user_input)
-                self.reply_with_text(message_object, thread_id, thread_type, examine_text)
+                await self.reply_with_text(message, examine_text)
 
             case "echoimages":
-                for image in islice(self.fetchThreadImages(thread_id), 100):
-                    if not hasattr(image, 'thumbnail_url'):
-                        continue
-                    self.sendRemoteImage(image.thumbnail_url, self.message_object(), thread_id=thread_id,
-                                         thread_type=thread_type)
+                for image_url in await self.image_urls_in_thread(message.thread_id, 100):
+                    await self.client.download(image_url, generated_image_file)
+                    await self.send_local_image_at(message.thread_id, generated_image_file)
+
             case "randomimage":
-                image_count_in_thread = 0
-                for count, image in enumerate(islice(self.fetchThreadImages(thread_id), 10000)):
-                    image_count_in_thread = count
-                print(image_count_in_thread)
+                image_urls = await self.image_urls_in_thread(message.thread_id, 10000)
+                print(len(image_urls))
 
             case "bike":
                 bike_info = self.all_bikes.find(user_input)
-                self.reply_with_text(message_object, thread_id, thread_type, bike_info)
+                await self.reply_with_text(message, bike_info)
 
             case "crime":
                 lat, long = crime.get_lat_long_from_postcode(user_input)
-                self.reply_with_location(message_object, thread_id, thread_type, self.create_location_from_lat_long_address(lat, long, user_input))
-                crime.create_plot_from_postcode_at(user_input, "tmp_plot.png")
-                self.reply_with_local_image_at(message_object, thread_id, thread_type, "tmp_plot.png")
+                await self.reply_with_text(message, map_link_for(lat, long))
+                crime.create_plot_from_postcode_at(user_input, crime_plot_file)
+                await self.reply_with_local_image_at(message, crime_plot_file)
 
             case _:
-                if self.fetchUserInfo(author_id)[author_id].name not in self.people_to_respond_to:
+                sender = await self.client.fetch_user_info(message.sender_id)
+                sender_name = sender[message.sender_id].name
+                if sender_name not in self.people_to_respond_to:
                     return
-                message = self.message_object()
-                message.text = \
-                    self.respond_to.get_response_from_name_and_message(
-                        self.fetchUserInfo(author_id)[author_id].name, message_object.text)
-                self.send(message, thread_id=thread_id, thread_type=thread_type)
+                response = self.respond_to.get_response_from_name_and_message(sender_name, message.text)
+                await self.client.send_message(response, message.thread_id)
 
-    def _upload(self, files, voice_clip=False):
-        return upload_fix.upload(self, files, voice_clip=voice_clip)
+    async def image_urls_in_thread(self, thread_id, limit):
+        image_urls = []
+        before = None
+        while len(image_urls) < limit:
+            messages = await self.client.fetch_thread_messages(thread_id, message_limit=50, before=before)
+            if not messages or messages[0].timestamp == before:
+                break
+            for message in messages:
+                image_urls.extend(image_urls_in(message))
+            before = messages[0].timestamp
+        return list(islice(image_urls, limit))
 
-    @staticmethod
-    def message_object(emoji_size=None, reply_to_id=None, sticker=None, text=None):
-        return fbchat.Message(emoji_size=emoji_size, sticker=sticker, text=text, reply_to_id=reply_to_id)
+    async def reply_with_text(self, input_message, text):
+        await self.client.send_message(text, input_message.thread_id, reply_to_message=input_message.id)
 
-    def reply_with_image_at_url(self, input_message, thread_id, thread_type, image_url):
-        response_message = self.message_object()
-        response_message.reply_to_id = input_message.uid
-        self.sendRemoteImage(image_url, response_message, thread_id, thread_type)
+    async def reply_with_local_image_at(self, input_message, image_path):
+        await self.send_local_image_at(input_message.thread_id, image_path, reply_to=input_message.id)
 
-    def reply_with_local_image_at(self, input_message, thread_id, thread_type, image_path):
-        response_message = self.message_object()
-        response_message.reply_to_id = input_message.uid
-        self.sendLocalImage(image_path, response_message, thread_id, thread_type)
+    async def reply_with_local_voice_clip_from(self, input_message, text):
+        speech.create_audio_file_from_at(text, voice_clip_file)
+        file_ids = await self.client.uploadFiles(file_path=[voice_clip_file], voice_clip=True)
+        await self.client.send_message(None, input_message.thread_id, files_ids=file_ids,
+                                       reply_to_message=input_message.id)
 
-    def reply_with_local_voice_clip_from(self, input_message, thread_id, thread_type, text):
-        response_message = self.message_object()
-        response_message.reply_to_id = input_message.uid
-        speech.create_audio_file_from_at(text, "tmp.mp3")
-        self.sendLocalVoiceClips(["tmp.mp3"], response_message, thread_id, thread_type)
+    async def send_local_image_at(self, thread_id, image_path, reply_to=None):
+        file_ids = await self.client.uploadFiles(file_path=[image_path], voice_clip=False)
+        await self.client.send_message(None, thread_id, files_ids=file_ids, reply_to_message=reply_to)
 
-    def reply_with_text(self, input_message, thread_id, thread_type, text):
-        response_message = self.message_object()
-        response_message.reply_to_id = input_message.uid
-        response_message.text = text
-        self.send(response_message, thread_id, thread_type)
 
-    def create_location_from_lat_long_address(self, lat, long, address):
-        return fbchat.LocationAttachment(lat, long, address, self.uid)
+def image_urls_in(message):
+    return [attachment.large_preview.url for attachment in message.attachments
+            if isinstance(attachment, ImageAttachment) and attachment.large_preview]
 
-    def reply_with_location(self, input_message, thread_id, thread_type, location):
-        response_message = self.message_object()
-        response_message.reply_to_id = input_message.uid
-        self.sendLocation(location, response_message, thread_id, thread_type)
+
+def map_link_for(lat, long):
+    return f"https://www.google.com/maps/search/?api=1&query={lat},{long}"
 
 
 def start():
-    openai.api_key = sensitive.api_key
-    client = MessageHandler(sensitive.email, sensitive.password, session_cookies=cookies.read())
-    cookies.store(client.getSession())
-    client.listen()
+    client = Client(cookies_file_path=cookies_file)
+    handler = MessageHandler(client)
+    client.add_listener(EventType.MESSAGE, handler.on_message)
+    client.run()

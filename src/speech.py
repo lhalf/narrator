@@ -1,30 +1,21 @@
-import requests
-import json
-import sensitive
 import os
+
 import openai
+import requests
 
-headers = {
-    "Authorization": "Bearer {}".format(sensitive.api_key),
-    "Content-Type": "application/json"
-}
+import sensitive
 
-data = {
-    "model": "tts-1",
-    "input": "",
-    "voice": 'onyx'
-}
+client = openai.OpenAI(api_key=sensitive.api_key)
 
 
 def create_audio_file_from_at(text, filepath):
     clear_old_audio_file(filepath)
-    data["input"] = text
-    response = requests.post("https://api.openai.com/v1/audio/speech", headers=headers, data=json.dumps(data))
-    if response.status_code == 200:
-        with open(filepath, "wb") as file:
-            file.write(response.content)
-    else:
-        print("Failed to generate speech. Response:", response.text)
+    with client.audio.speech.with_streaming_response.create(
+        model="gpt-4o-mini-tts",
+        voice="onyx",
+        input=text,
+    ) as response:
+        response.stream_to_file(filepath)
 
 
 def clear_old_audio_file(filepath):
@@ -32,18 +23,14 @@ def clear_old_audio_file(filepath):
         os.remove(filepath)
 
 
-files = {
-    'model': (None, 'whisper-1'),
-}
-
-
 def audio_file_to_text_from(filepath):
-    return openai.Audio.transcribe(
-        file=open(filepath, 'rb'),
-        model="whisper-1",
-        response_format="text",
-        language="en"
-    )
+    with open(filepath, "rb") as file:
+        return client.audio.transcriptions.create(
+            file=file,
+            model="gpt-4o-transcribe",
+            response_format="text",
+            language="en"
+        )
 
 
 def save_audio_from_url(url, file_path):

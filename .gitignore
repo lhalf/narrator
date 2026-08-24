@@ -1,6 +1,7 @@
 .idea/
 __pycache__/
-cookies.txt
+.venv/
+cookies.json
 src/sensitive.py
 *.png
 *.mp3

@@ -1,23 +1,37 @@
+import base64
+
 import openai
 
+import sensitive
 
-def get_url_from(message):
+client = openai.OpenAI(api_key=sensitive.api_key)
+
+
+def save_generated_at(message, filepath):
     print("Generating from " + message)
-    response = openai.Image.create(
+    response = client.images.generate(
+        model="gpt-image-1",
         prompt=message,
         n=1,
-        size="256x256",
+        size="1024x1024",
     )
-    return response["data"][0]["url"]
+    write_image_at(response, filepath)
 
 
-def get_filled_url_from(message, full_image_path, mask_image_path):
+def save_filled_at(message, full_image_path, mask_image_path, filepath):
     print("Fill generating from " + message)
-    response = openai.Image.create_edit(
-        image=open(full_image_path, "rb"),
-        mask=open(mask_image_path, "rb"),
-        prompt=message,
-        n=1,
-        size="256x256"
-    )
-    return response['data'][0]['url']
+    with open(full_image_path, "rb") as image, open(mask_image_path, "rb") as mask:
+        response = client.images.edit(
+            model="gpt-image-1",
+            image=image,
+            mask=mask,
+            prompt=message,
+            n=1,
+            size="1024x1024",
+        )
+    write_image_at(response, filepath)
+
+
+def write_image_at(response, filepath):
+    with open(filepath, "wb") as file:
+        file.write(base64.b64decode(response.data[0].b64_json))

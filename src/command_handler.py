@@ -1,12 +1,14 @@
 import unittest
-import fbchat
+
+from fbchat_muqit import AudioAttachment
+
 import speech
 
 
 def extract_from(message_object):
     if message_object.attachments:
         for attachment in message_object.attachments:
-            if isinstance(attachment, fbchat.AudioAttachment):
+            if isinstance(attachment, AudioAttachment):
                 return extract_audio_command(attachment)
     else:
         message_elements = message_object.text.split()
@@ -17,7 +19,7 @@ def extract_from(message_object):
 
 
 def extract_audio_command(attachment):
-    speech.save_audio_from_url(attachment.url, attachment.filename)
+    speech.save_audio_from_url(attachment.playable_url, attachment.filename)
     query = speech.audio_file_to_text_from(attachment.filename).lower().replace(".", "")
     command = query.split()[0]
     return command, query.replace(command, "").strip()
