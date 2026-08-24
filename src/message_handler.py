@@ -105,9 +105,11 @@ class MessageHandler:
                                 "group_full.png", "group.png", generated_image_file)
         await self.messenger.send_image(message.thread_id, generated_image_file, reply_to=message.id)
 
-    async def say(self, message, text, pitch):
+    async def say(self, message, text, pitch, vibrato):
         spoken = await self.spoken_text_for(message, text)
-        await asyncio.to_thread(speech.create_audio_file_from_at, spoken, voice_clip_file, pitch)
+        if not spoken:
+            return
+        await asyncio.to_thread(speech.create_audio_file_from_at, spoken, voice_clip_file, pitch, vibrato)
         await self.messenger.send_voice_clip(message.thread_id, voice_clip_file, reply_to=message.id)
 
     async def crime(self, message, postcode):
@@ -131,9 +133,9 @@ class MessageHandler:
         await self.messenger.send_image(message.thread_id, generated_image_file, reply_to=message.id)
 
     async def spoken_text_for(self, message, text):
-        if commands.name_in(text) not in commands.speakable:
+        if not commands.is_command(text):
             return text
-        return await commands.run(Request(self, message), text) or text
+        return await commands.run(Request(self, message), text)
 
     async def reply_as_person_to(self, message):
         sender_name = await self.history.name_for(message.sender_id)

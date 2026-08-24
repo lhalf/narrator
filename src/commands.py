@@ -5,8 +5,6 @@ import shlex
 
 import click
 
-speakable = frozenset(["help", "summarise", "quote", "examine", "bike"])
-
 
 @click.group(name="narrator")
 def commands():
@@ -78,11 +76,12 @@ def genfill(request, prompt):
 
 @commands.command()
 @click.option("--pitch", type=click.Choice(["high", "low"]), default=None, help="shift the voice pitch")
+@click.option("--vibrato", is_flag=True, help="wobble the pitch up and down")
 @click.argument("text", nargs=-1, required=True)
 @click.pass_obj
-def say(request, pitch, text):
-    """reply with a voice clip"""
-    return request.handler.say(request.message, " ".join(text), pitch)
+def say(request, pitch, vibrato, text):
+    """reply with a voice clip, optionally of another command's output"""
+    return request.handler.say(request.message, " ".join(text), pitch, vibrato)
 
 
 @commands.command()
