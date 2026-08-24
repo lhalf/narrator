@@ -26,7 +26,7 @@ voice_clip_file = os.path.join(temp_directory, "narrator_voice.mp3")
 crime_plot_file = os.path.join(temp_directory, "narrator_plot.png")
 
 echoed_image_limit = 100
-failure_reason_limit = 200
+failure_message = "Sorry, that went wrong"
 
 Request = namedtuple("Request", ["handler", "message"])
 
@@ -159,17 +159,12 @@ class MessageHandler:
 
     async def report_failure(self, message, error):
         try:
-            await self.reply_with_text(message, failure_message_for(error))
+            await self.reply_with_text(message, failure_message)
         except Exception as reporting_error:
             print(f"Could not report failure: {reporting_error!r}")
 
     async def reply_with_text(self, message, text):
         await self.messenger.send_text(message.thread_id, text, reply_to=message.id)
-
-
-def failure_message_for(error):
-    reason = str(error).strip() or type(error).__name__
-    return "Sorry, that went wrong: " + reason[:failure_reason_limit]
 
 
 def text_without(message, bot_name):

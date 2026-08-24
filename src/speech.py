@@ -7,6 +7,7 @@ import openai_client
 
 pitch_factors = {"high": 1.8, "low": 0.7}
 shift_sample_rate = 44100
+safety_filter = "alimiter=limit=0.95"  # keeps stacked filters from feeding the encoder invalid samples
 
 effect_filters = {
     "vibrato": "vibrato=f=6:d=0.7",
@@ -51,7 +52,8 @@ def pitch_filters(factor):
 def run_filters(filepath, filters):
     filtered = filepath + ".filtered.mp3"
     subprocess.run([
-        "ffmpeg", "-y", "-loglevel", "error", "-i", filepath, "-af", ",".join(filters), filtered,
+        "ffmpeg", "-y", "-loglevel", "error", "-i", filepath,
+        "-af", ",".join(filters + [safety_filter]), filtered,
     ], check=True)
     os.replace(filtered, filepath)
 

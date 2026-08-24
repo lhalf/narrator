@@ -21,7 +21,7 @@ def help(request):
 
 
 @commands.command()
-@click.option("-n", "count", type=int, default=50, help="how many messages to read")
+@click.option("-n", "--count", "count", type=int, default=50, help="how many messages to read")
 @click.pass_obj
 def summarise(request, count):
     """summarise the last n messages"""
@@ -36,7 +36,7 @@ def quote(request):
 
 
 @commands.command()
-@click.option("--summarise", "summarised", is_flag=True, help="summarise the matches instead")
+@click.option("-s", "--summarise", "summarised", is_flag=True, help="summarise the matches instead")
 @click.argument("query", nargs=-1, required=True)
 @click.pass_obj
 def find(request, summarised, query):
@@ -77,8 +77,8 @@ def genfill(request, prompt):
 
 
 @commands.command(context_settings={"ignore_unknown_options": True})
-@click.option("--pitch", type=click.Choice(["high", "low"]), default=None, help="shift the voice pitch")
-@click.option("--effect", "effects", multiple=True, type=click.Choice(sorted(speech.effect_filters)),
+@click.option("-p", "--pitch", type=click.Choice(["high", "low"]), default=None, help="shift the voice pitch")
+@click.option("-e", "--effect", "effects", multiple=True, type=click.Choice(sorted(speech.effect_filters)),
               help="apply a voice effect, repeatable")
 @click.argument("text", nargs=-1, type=click.UNPROCESSED, required=True)
 @click.pass_obj
@@ -143,7 +143,7 @@ def help_text():
 
 
 def help_line_for(name, command):
-    options = " ".join(option.opts[0] for option in command.params if isinstance(option, click.Option))
+    options = " ".join(flags_for(option) for option in command.params if isinstance(option, click.Option))
     arguments = " ".join(argument.name.upper() for argument in command.params
                          if isinstance(argument, click.Argument))
     usage = " ".join(part for part in [name, f"[{options}]" if options else "", arguments] if part)
@@ -151,6 +151,10 @@ def help_line_for(name, command):
 
 
 def choice_lines_for(command):
-    return [f"  {option.opts[0]}: {', '.join(option.type.choices)}"
+    return [f"  {flags_for(option)}: {', '.join(option.type.choices)}"
             for option in command.params
             if isinstance(option, click.Option) and isinstance(option.type, click.Choice)]
+
+
+def flags_for(option):
+    return "/".join(option.opts)
