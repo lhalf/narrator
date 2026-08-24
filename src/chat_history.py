@@ -3,12 +3,15 @@ import time
 from datetime import datetime
 
 from fbchat_muqit import ImageAttachment
+from fbchat_muqit.graphql import QueryRequest
 
 batch_size = 50
 image_search_limit = 1000
 search_result_limit = 10
 quote_attempts = 8
 day_in_milliseconds = 24 * 60 * 60 * 1000
+thread_messages_doc_id = "1860982147341344"
+graphql_url = "https://www.facebook.com/api/graphqlbatch/"
 
 
 class ChatHistory:
@@ -17,11 +20,23 @@ class ChatHistory:
         self.client = client
         self.oldest_timestamps = {}
 
+    async def fetch_messages(self, thread_id, limit, before=None):
+        query = QueryRequest(doc_id=thread_messages_doc_id, query_params={
+            "id": thread_id,
+            "message_limit": limit,
+            "load_messages": True,
+            "load_read_receipts": True,
+            "before": before,
+        })
+        data = {"queries": self.client._graphql.queries_to_json(query)}
+        result = await self.client._state._post(graphql_url, data=data, as_graphql=True)
+        return self.client._parser.parse_thread_message(result)
+
     async def messages_in(self, thread_id, limit):
         messages = []
         before = None
         while len(messages) < limit:
-            batch = await self.client.fetch_thread_messages(thread_id, message_limit=batch_size, before=before)
+            batch = await self.fetch_messages(thread_id, batch_size, before)
             if not batch or batch[0].timestamp == before:
                 break
             messages = list(batch) + messages
@@ -43,8 +58,7 @@ class ChatHistory:
         oldest = await self.oldest_timestamp_in(thread_id)
         newest = now_in_milliseconds()
         for _ in range(quote_attempts):
-            batch = await self.client.fetch_thread_messages(thread_id, message_limit=batch_size,
-                                                            before=random.randint(oldest, newest))
+            batch = await self.fetch_messages(thread_id, batch_size, random.randint(oldest, newest))
             quotable = [message for message in batch or []
                         if message.text and message.sender_id != self.client.uid]
             if quotable:
@@ -75,7 +89,7 @@ class ChatHistory:
         return without_messages
 
     async def has_messages_before(self, thread_id, timestamp):
-        return bool(await self.client.fetch_thread_messages(thread_id, message_limit=1, before=timestamp))
+        return bool(await self.fetch_messages(thread_id, 1, timestamp))
 
     async def search_results_for(self, thread_id, query):
         found = await self.client.search_message(query, thread_id)
