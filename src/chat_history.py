@@ -133,8 +133,15 @@ class ChatHistory:
 
 
 def image_urls_in(message):
-    return [attachment.large_preview.url for attachment in message.attachments or []
+    return [attachment.large_preview.url for attachment in attachments_in(message)
             if isinstance(attachment, ImageAttachment) and attachment.large_preview]
+
+
+def attachments_in(message):
+    attachments = []
+    for attachment in message.attachments or []:
+        attachments.extend(attachment if isinstance(attachment, list) else [attachment])
+    return attachments
 
 
 def message_nodes_in(result):

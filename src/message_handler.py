@@ -10,6 +10,7 @@ from fbchat_muqit import Client, EventType
 import bikes
 import chat_history
 import command_handler
+import commands
 import crime
 import generate_image
 import generate_text
@@ -24,11 +25,10 @@ generated_image_file = os.path.join(temp_directory, "narrator_image.png")
 voice_clip_file = os.path.join(temp_directory, "narrator_voice.mp3")
 crime_plot_file = os.path.join(temp_directory, "narrator_plot.png")
 
-default_summary_length = 50
 echoed_image_limit = 100
 failure_reason_limit = 200
 
-Command = namedtuple("Command", ["usage", "description", "run", "returns_text"])
+Request = namedtuple("Request", ["handler", "message"])
 
 
 class MessageHandler:
@@ -40,24 +40,6 @@ class MessageHandler:
         self.people_to_respond_to = []
         self.respond_to = people.RespondTo(self.people_to_respond_to)
         self.all_bikes = bikes.AllBikes()
-        self.commands = self.build_commands()
-
-    def build_commands(self):
-        return {
-            "help": Command("", "show this message", self.help, True),
-            "summarise": Command("[n]", "summarise the last n messages", self.summarise, True),
-            "quote": Command("", "post a random message from this thread", self.quote, True),
-            "examine": Command("<item>", "look up the OSRS examine text for an item", self.examine, True),
-            "bike": Command("<name>", "look up a bike's specs", self.bike, True),
-            "find": Command("[summarise] <text>", "search this thread's history for a phrase",
-                            self.find, False),
-            "gen": Command("<prompt>", "generate an image", self.gen, False),
-            "genfill": Command("<prompt>", "regenerate the masked part of the group photo", self.genfill, False),
-            "say": Command("<text>", "reply with a voice clip", self.say, False),
-            "crime": Command("<postcode>", "map link and crime plot for a postcode", self.crime, False),
-            "echoimages": Command("", "resend recent images in this thread", self.echoimages, False),
-            "randomimage": Command("", "post a random image from this thread", self.randomimage, False),
-        }
 
     async def on_message(self, message):
         if message.sender_id == self.messenger.uid:
@@ -75,43 +57,36 @@ class MessageHandler:
             return
 
         name, user_input = await asyncio.to_thread(command_handler.extract_from, message)
-        command = self.commands.get(name.lower())
-        if not command:
+        request = f"{name} {user_input}".strip()
+        if not commands.is_command(request):
             await self.reply_as_person_to(message)
             return
 
-        text = await command.run(message, user_input)
+        text = await commands.run(Request(self, message), request)
         if text is not None:
             await self.reply_with_text(message, text)
 
-    async def report_failure(self, message, error):
-        try:
-            await self.reply_with_text(message, failure_message_for(error))
-        except Exception as reporting_error:
-            print(f"Could not report failure: {reporting_error!r}")
+    async def help(self, message):
+        return commands.help_text()
 
-    async def help(self, message, user_input):
-        return "\n\n".join(help_line_for(name, command) for name, command in self.commands.items())
-
-    async def summarise(self, message, user_input):
-        messages = await self.history.messages_in(message.thread_id, message_count_in(user_input))
+    async def summarise(self, message, count):
+        messages = await self.history.messages_in(message.thread_id, count)
         transcript = await self.history.transcript_of(messages)
         return await asyncio.to_thread(generate_text.summary_of, transcript)
 
-    async def quote(self, message, user_input):
+    async def quote(self, message):
         return await self.history.random_quote_from(message.thread_id)
 
-    async def examine(self, message, user_input):
-        return self.osrs_items.get_examine_text_from_item_name(user_input)
+    async def examine(self, message, item):
+        return self.osrs_items.get_examine_text_from_item_name(item)
 
-    async def bike(self, message, user_input):
-        return await asyncio.to_thread(self.all_bikes.find, user_input)
+    async def bike(self, message, name):
+        return await asyncio.to_thread(self.all_bikes.find, name)
 
-    async def find(self, message, user_input):
-        modifier, remainder = split_command(user_input)
-        if modifier.lower() == "summarise":
-            return await self.summarise_search(message, remainder)
-        for result in await self.history.search_results_for(message.thread_id, user_input):
+    async def find(self, message, query, summarised):
+        if summarised:
+            return await self.summarise_search(message, query)
+        for result in await self.history.search_results_for(message.thread_id, query):
             await self.reply_with_text(message, result)
 
     async def summarise_search(self, message, query):
@@ -121,48 +96,44 @@ class MessageHandler:
         found = "\n".join(chat_history.line_for(result) for result in results)
         return await asyncio.to_thread(generate_text.summary_of, found)
 
-    async def gen(self, message, user_input):
-        await asyncio.to_thread(generate_image.save_generated_at, user_input, generated_image_file)
+    async def gen(self, message, prompt):
+        await asyncio.to_thread(generate_image.save_generated_at, prompt, generated_image_file)
         await self.messenger.send_image(message.thread_id, generated_image_file, reply_to=message.id)
 
-    async def genfill(self, message, user_input):
-        await asyncio.to_thread(generate_image.save_filled_at, user_input,
+    async def genfill(self, message, prompt):
+        await asyncio.to_thread(generate_image.save_filled_at, prompt,
                                 "group_full.png", "group.png", generated_image_file)
         await self.messenger.send_image(message.thread_id, generated_image_file, reply_to=message.id)
 
-    async def say(self, message, user_input):
-        text = await self.spoken_text_for(message, user_input)
-        await asyncio.to_thread(speech.create_audio_file_from_at, text, voice_clip_file)
+    async def say(self, message, text, pitch):
+        spoken = await self.spoken_text_for(message, text)
+        await asyncio.to_thread(speech.create_audio_file_from_at, spoken, voice_clip_file, pitch)
         await self.messenger.send_voice_clip(message.thread_id, voice_clip_file, reply_to=message.id)
 
-    async def crime(self, message, user_input):
-        lat, long = await asyncio.to_thread(crime.get_lat_long_from_postcode, user_input)
+    async def crime(self, message, postcode):
+        lat, long = await asyncio.to_thread(crime.get_lat_long_from_postcode, postcode)
         if lat is None:
-            await self.reply_with_text(message, f"Could not find postcode {user_input}")
-            return
+            return f"Could not find postcode {postcode}"
         await self.reply_with_text(message, map_link_for(lat, long))
-        await asyncio.to_thread(crime.create_plot_from_postcode_at, user_input, crime_plot_file)
+        await asyncio.to_thread(crime.create_plot_from_postcode_at, postcode, crime_plot_file)
         await self.messenger.send_image(message.thread_id, crime_plot_file, reply_to=message.id)
 
-    async def echoimages(self, message, user_input):
+    async def echoimages(self, message):
         for image_url in await self.history.image_urls_in(message.thread_id, echoed_image_limit):
             await self.messenger.download(image_url, generated_image_file)
             await self.messenger.send_image(message.thread_id, generated_image_file)
 
-    async def randomimage(self, message, user_input):
+    async def randomimage(self, message):
         image_urls = await self.history.image_urls_in(message.thread_id, chat_history.image_search_limit)
         if not image_urls:
-            await self.reply_with_text(message, "No images found")
-            return
+            return "No images found"
         await self.messenger.download(random.choice(image_urls), generated_image_file)
         await self.messenger.send_image(message.thread_id, generated_image_file, reply_to=message.id)
 
-    async def spoken_text_for(self, message, user_input):
-        name, remainder = split_command(user_input)
-        command = self.commands.get(name.lower())
-        if not command or not command.returns_text:
-            return user_input
-        return await command.run(message, remainder) or user_input
+    async def spoken_text_for(self, message, text):
+        if commands.name_in(text) not in commands.speakable:
+            return text
+        return await commands.run(Request(self, message), text) or text
 
     async def reply_as_person_to(self, message):
         sender_name = await self.history.name_for(message.sender_id)
@@ -184,14 +155,14 @@ class MessageHandler:
         answer = await asyncio.to_thread(generate_text.answer_to, question, quoted.text if quoted else None)
         await self.reply_with_text(message, answer)
 
+    async def report_failure(self, message, error):
+        try:
+            await self.reply_with_text(message, failure_message_for(error))
+        except Exception as reporting_error:
+            print(f"Could not report failure: {reporting_error!r}")
+
     async def reply_with_text(self, message, text):
         await self.messenger.send_text(message.thread_id, text, reply_to=message.id)
-
-
-def help_line_for(name, command):
-    if not command.usage:
-        return f"{name} - {command.description}"
-    return f"{name} {command.usage} - {command.description}"
 
 
 def failure_message_for(error):
@@ -210,17 +181,6 @@ def text_without(message, bot_name):
 
 def mentions_in(message):
     return message.mentions if isinstance(message.mentions, list) else []
-
-
-def split_command(text):
-    words = text.split()
-    if not words:
-        return "", ""
-    return words[0], text.replace(words[0], "", 1).strip()
-
-
-def message_count_in(user_input):
-    return int(user_input) if user_input.isdigit() else default_summary_length
 
 
 def map_link_for(lat, long):

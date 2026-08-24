@@ -9,6 +9,7 @@ dependencies = [
     "matplotlib>=3.8",
     "levenshtein>=0.25",
     "osrsbox>=2.2.3",
+    "click>=8.4.2",
 ]
 
 [dependency-groups]
