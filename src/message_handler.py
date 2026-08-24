@@ -68,16 +68,6 @@ class MessageHandler:
         command, user_input = command_handler.extract_from(message)
 
         match command:
-            case "help":
-                await self.reply_with_text(message, help_text)
-
-            case "summarise":
-                messages = await self.messages_in_thread(message.thread_id, message_count_in(user_input))
-                await self.reply_with_text(message, generate_text.summary_of(await self.transcript_of(messages)))
-
-            case "quote":
-                await self.reply_with_text(message, await self.random_quote_from(message.thread_id))
-
             case "find":
                 for result in await self.search_results_for(message.thread_id, user_input):
                     await self.reply_with_text(message, result)
@@ -91,11 +81,7 @@ class MessageHandler:
                 await self.reply_with_local_image_at(message, generated_image_file)
 
             case "say":
-                await self.reply_with_local_voice_clip_from(message, user_input)
-
-            case "examine":
-                examine_text = self.osrs_items.get_examine_text_from_item_name(user_input)
-                await self.reply_with_text(message, examine_text)
+                await self.reply_with_local_voice_clip_from(message, await self.spoken_text_for(message, user_input))
 
             case "echoimages":
                 for image_url in await self.image_urls_in_thread(message.thread_id, 100):
@@ -106,10 +92,6 @@ class MessageHandler:
                 image_urls = await self.image_urls_in_thread(message.thread_id, 10000)
                 print(len(image_urls))
 
-            case "bike":
-                bike_info = self.all_bikes.find(user_input)
-                await self.reply_with_text(message, bike_info)
-
             case "crime":
                 lat, long = crime.get_lat_long_from_postcode(user_input)
                 await self.reply_with_text(message, map_link_for(lat, long))
@@ -117,13 +99,44 @@ class MessageHandler:
                 await self.reply_with_local_image_at(message, crime_plot_file)
 
             case _:
-                sender = await self.client.fetch_user_info(message.sender_id)
-                sender_name = sender[message.sender_id].name
-                if sender_name not in self.people_to_respond_to:
+                text = await self.text_result_of(message, command, user_input)
+                if text is not None:
+                    await self.reply_with_text(message, text)
                     return
-                response = self.respond_to.get_response_from_name_and_message(sender_name, message.text)
-                await self.wait_for_send_slot()
-                await self.client.send_message(response, message.thread_id)
+                await self.reply_as_person_to(message)
+
+    async def text_result_of(self, message, command, user_input):
+        match command:
+            case "help":
+                return help_text
+
+            case "summarise":
+                messages = await self.messages_in_thread(message.thread_id, message_count_in(user_input))
+                return generate_text.summary_of(await self.transcript_of(messages))
+
+            case "quote":
+                return await self.random_quote_from(message.thread_id)
+
+            case "examine":
+                return self.osrs_items.get_examine_text_from_item_name(user_input)
+
+            case "bike":
+                return self.all_bikes.find(user_input)
+
+        return None
+
+    async def spoken_text_for(self, message, user_input):
+        command, remainder = split_command(user_input)
+        return await self.text_result_of(message, command, remainder) or user_input
+
+    async def reply_as_person_to(self, message):
+        sender = await self.client.fetch_user_info(message.sender_id)
+        sender_name = sender[message.sender_id].name
+        if sender_name not in self.people_to_respond_to:
+            return
+        response = self.respond_to.get_response_from_name_and_message(sender_name, message.text)
+        await self.wait_for_send_slot()
+        await self.client.send_message(response, message.thread_id)
 
     def is_mentioned_in(self, message):
         if any(str(mention.user_id) == str(self.client.uid) for mention in mentions_in(message)):
@@ -225,6 +238,13 @@ def text_without(message, bot_name):
 
 def mentions_in(message):
     return message.mentions if isinstance(message.mentions, list) else []
+
+
+def split_command(text):
+    words = text.split()
+    if not words:
+        return "", ""
+    return words[0], text.replace(words[0], "", 1).strip()
 
 
 def message_count_in(user_input):
