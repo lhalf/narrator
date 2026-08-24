@@ -5,6 +5,8 @@ import shlex
 
 import click
 
+import speech
+
 
 @click.group(name="narrator")
 def commands():
@@ -76,12 +78,13 @@ def genfill(request, prompt):
 
 @commands.command(context_settings={"ignore_unknown_options": True})
 @click.option("--pitch", type=click.Choice(["high", "low"]), default=None, help="shift the voice pitch")
-@click.option("--vibrato", is_flag=True, help="wobble the pitch up and down")
+@click.option("--effect", "effects", multiple=True, type=click.Choice(sorted(speech.effect_filters)),
+              help="apply a voice effect, repeatable")
 @click.argument("text", nargs=-1, type=click.UNPROCESSED, required=True)
 @click.pass_obj
-def say(request, pitch, vibrato, text):
+def say(request, pitch, effects, text):
     """reply with a voice clip, optionally of another command's output"""
-    return request.handler.say(request.message, " ".join(text), pitch, vibrato)
+    return request.handler.say(request.message, " ".join(text), pitch, effects)
 
 
 @commands.command()
@@ -144,4 +147,10 @@ def help_line_for(name, command):
     arguments = " ".join(argument.name.upper() for argument in command.params
                          if isinstance(argument, click.Argument))
     usage = " ".join(part for part in [name, f"[{options}]" if options else "", arguments] if part)
-    return f"{usage} - {command.short_help or command.help}"
+    return "\n".join([f"{usage} - {command.short_help or command.help}"] + choice_lines_for(command))
+
+
+def choice_lines_for(command):
+    return [f"  {option.opts[0]}: {', '.join(option.type.choices)}"
+            for option in command.params
+            if isinstance(option, click.Option) and isinstance(option.type, click.Choice)]

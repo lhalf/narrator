@@ -7,10 +7,25 @@ import openai_client
 
 pitch_factors = {"high": 1.8, "low": 0.7}
 shift_sample_rate = 44100
-vibrato_filter = "vibrato=f=6:d=0.7"
+
+effect_filters = {
+    "vibrato": "vibrato=f=6:d=0.7",
+    "shaky": "tremolo=f=8:d=0.8",
+    "wobble": "apulsator=hz=3",
+    "robot": "afftfilt=real='hypot(re,im)*sin(0)':imag='hypot(re,im)*cos(0)':win_size=512:overlap=0.75",
+    "dalek": "acrusher=bits=6:mode=log,aphaser=type=t:speed=2",
+    "telephone": "highpass=f=300,lowpass=f=3400,acrusher=bits=8:mode=log",
+    "cave": "aecho=0.8:0.9:500|1000:0.4|0.3",
+    "crowd": "chorus=0.7:0.9:55|60|75:0.4|0.32|0.3:0.25|0.4|0.3:2|2.3|1.3",
+    "underwater": "lowpass=f=500,chorus=0.6:0.9:50:0.4:0.25:2",
+    "backwards": "areverse",
+    "drunk": "atempo=0.8,aresample=44100,asetrate=35280,aresample=44100",
+    "helium": "rubberband=pitch=1.6:formant=preserved",
+    "monster": "rubberband=pitch=0.6:formant=shifted",
+}
 
 
-def create_audio_file_from_at(text, filepath, pitch=None, vibrato=False):
+def create_audio_file_from_at(text, filepath, pitch=None, effects=()):
     clear_old_audio_file(filepath)
     with openai_client.client().audio.speech.with_streaming_response.create(
         model="gpt-4o-mini-tts",
@@ -18,13 +33,12 @@ def create_audio_file_from_at(text, filepath, pitch=None, vibrato=False):
         input=text,
     ) as response:
         response.stream_to_file(filepath)
-    apply_effects(filepath, pitch, vibrato)
+    apply_effects(filepath, pitch, effects)
 
 
-def apply_effects(filepath, pitch, vibrato):
+def apply_effects(filepath, pitch, effects):
     filters = pitch_filters(pitch_factors[pitch]) if pitch in pitch_factors else []
-    if vibrato:
-        filters.append(vibrato_filter)
+    filters.extend(effect_filters[effect] for effect in effects if effect in effect_filters)
     if filters:
         run_filters(filepath, filters)
 

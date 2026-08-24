@@ -105,11 +105,11 @@ class MessageHandler:
                                 "group_full.png", "group.png", generated_image_file)
         await self.messenger.send_image(message.thread_id, generated_image_file, reply_to=message.id)
 
-    async def say(self, message, text, pitch, vibrato):
+    async def say(self, message, text, pitch, effects):
         spoken = await self.spoken_text_for(message, text)
         if not spoken:
             return
-        await asyncio.to_thread(speech.create_audio_file_from_at, spoken, voice_clip_file, pitch, vibrato)
+        await asyncio.to_thread(speech.create_audio_file_from_at, spoken, voice_clip_file, pitch, effects)
         await self.messenger.send_voice_clip(message.thread_id, voice_clip_file, reply_to=message.id)
 
     async def crime(self, message, postcode):
