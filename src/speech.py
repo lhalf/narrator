@@ -1,16 +1,13 @@
 import os
 
-import openai
 import requests
 
-import sensitive
-
-client = openai.OpenAI(api_key=sensitive.api_key)
+import openai_client
 
 
 def create_audio_file_from_at(text, filepath):
     clear_old_audio_file(filepath)
-    with client.audio.speech.with_streaming_response.create(
+    with openai_client.client().audio.speech.with_streaming_response.create(
         model="gpt-4o-mini-tts",
         voice="onyx",
         input=text,
@@ -25,7 +22,7 @@ def clear_old_audio_file(filepath):
 
 def audio_file_to_text_from(filepath):
     with open(filepath, "rb") as file:
-        return client.audio.transcriptions.create(
+        return openai_client.client().audio.transcriptions.create(
             file=file,
             model="gpt-4o-transcribe",
             response_format="text",

@@ -3,6 +3,8 @@ import re
 
 import Levenshtein
 
+bikes_file = 'src/all_bikez_curated.csv'
+
 
 def join_and_lower(message):
     return message.replace(" ", "").lower()
@@ -10,8 +12,8 @@ def join_and_lower(message):
 
 class AllBikes:
     def __init__(self):
-        self.csv_file = open('src/all_bikez_curated.csv', newline='', encoding='utf-8')
-        self.csv_reader = csv.DictReader(self.csv_file)
+        with open(bikes_file, newline='', encoding='utf-8') as csv_file:
+            self.rows = list(csv.DictReader(csv_file))
 
     @staticmethod
     def row_to_message(row, initial_message=""):
@@ -22,8 +24,6 @@ class AllBikes:
         return message
 
     def find(self, bike):
-        self.csv_file.seek(0)
-
         search_year = re.findall(r'\b(19\d{2}|20\d{2})\b', bike)
 
         if search_year:
@@ -35,7 +35,7 @@ class AllBikes:
         year_lev_distance = 1000
         year_difference = 1000
 
-        for row in self.csv_reader:
+        for row in self.rows:
             row_lev_distance = Levenshtein.distance(join_and_lower(search_brand_and_model), join_and_lower(row["Brand"] + row["Model"]))
             if search_year:
                 row_year_lev_distance = Levenshtein.distance(search_year, row["Year"])

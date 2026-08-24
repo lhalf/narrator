@@ -3,7 +3,8 @@ from osrsbox import items_api
 
 class OSRSItems:
 
-    all_items = items_api.load()
+    def __init__(self):
+        self.all_items = items_api.load()
 
     def get_examine_text_from_item_name(self, item_name):
         print("Examining " + item_name)

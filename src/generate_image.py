@@ -1,10 +1,6 @@
 import base64
 
-import openai
-
-import sensitive
-
-client = openai.OpenAI(api_key=sensitive.api_key)
+import openai_client
 
 image_size = "1024x1024"
 image_quality = "low"
@@ -12,7 +8,7 @@ image_quality = "low"
 
 def save_generated_at(message, filepath):
     print("Generating from " + message)
-    response = client.images.generate(
+    response = openai_client.client().images.generate(
         model="gpt-image-1",
         prompt=message,
         n=1,
@@ -25,7 +21,7 @@ def save_generated_at(message, filepath):
 def save_filled_at(message, full_image_path, mask_image_path, filepath):
     print("Fill generating from " + message)
     with open(full_image_path, "rb") as image, open(mask_image_path, "rb") as mask:
-        response = client.images.edit(
+        response = openai_client.client().images.edit(
             model="gpt-image-1",
             image=image,
             mask=mask,

@@ -7,7 +7,7 @@ run:
     uv run python src/main.py
 
 test:
-    uv run python -m pytest src/command_handler.py
+    uv run python -m pytest
 
 # check every module still imports
 check:
