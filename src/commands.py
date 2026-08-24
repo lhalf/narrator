@@ -74,10 +74,10 @@ def genfill(request, prompt):
     return request.handler.genfill(request.message, " ".join(prompt))
 
 
-@commands.command()
+@commands.command(context_settings={"ignore_unknown_options": True})
 @click.option("--pitch", type=click.Choice(["high", "low"]), default=None, help="shift the voice pitch")
 @click.option("--vibrato", is_flag=True, help="wobble the pitch up and down")
-@click.argument("text", nargs=-1, required=True)
+@click.argument("text", nargs=-1, type=click.UNPROCESSED, required=True)
 @click.pass_obj
 def say(request, pitch, vibrato, text):
     """reply with a voice clip, optionally of another command's output"""
