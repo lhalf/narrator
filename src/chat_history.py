@@ -115,8 +115,11 @@ class ChatHistory:
         results = found["results"][:search_result_limit]
         if not results:
             return [f"Nothing found for \"{query}\""]
-        return [f"{date_of(result.timestamp_ms)} {result.sender_name}: {result.snippet}"
-                for result in results]
+        return [line_for(result) for result in results]
+
+    async def search_for(self, thread_id, query):
+        found = await self.client.search_message(query, thread_id)
+        return found["results"][:search_result_limit]
 
     async def names_for(self, sender_ids):
         try:
@@ -146,6 +149,10 @@ def message_nodes_in(result):
 def name_of(senders, sender_id):
     sender = senders.get(sender_id)
     return sender.name if sender else "Unknown"
+
+
+def line_for(result):
+    return f"{date_of(result.timestamp_ms)} {result.sender_name}: {result.snippet}"
 
 
 def now_in_milliseconds():

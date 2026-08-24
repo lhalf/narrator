@@ -49,7 +49,8 @@ class MessageHandler:
             "quote": Command("", "post a random message from this thread", self.quote, True),
             "examine": Command("<item>", "look up the OSRS examine text for an item", self.examine, True),
             "bike": Command("<name>", "look up a bike's specs", self.bike, True),
-            "find": Command("<text>", "search this thread's history for a phrase", self.find, False),
+            "find": Command("[summarise] <text>", "search this thread's history for a phrase",
+                            self.find, False),
             "gen": Command("<prompt>", "generate an image", self.gen, False),
             "genfill": Command("<prompt>", "regenerate the masked part of the group photo", self.genfill, False),
             "say": Command("<text>", "reply with a voice clip", self.say, False),
@@ -107,8 +108,18 @@ class MessageHandler:
         return await asyncio.to_thread(self.all_bikes.find, user_input)
 
     async def find(self, message, user_input):
+        modifier, remainder = split_command(user_input)
+        if modifier.lower() == "summarise":
+            return await self.summarise_search(message, remainder)
         for result in await self.history.search_results_for(message.thread_id, user_input):
             await self.reply_with_text(message, result)
+
+    async def summarise_search(self, message, query):
+        results = await self.history.search_for(message.thread_id, query)
+        if not results:
+            return f"Nothing found for \"{query}\""
+        found = "\n".join(chat_history.line_for(result) for result in results)
+        return await asyncio.to_thread(generate_text.summary_of, found)
 
     async def gen(self, message, user_input):
         await asyncio.to_thread(generate_image.save_generated_at, user_input, generated_image_file)
