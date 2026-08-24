@@ -27,7 +27,7 @@ default_summary_length = 50
 quote_search_limit = 500
 search_result_limit = 10
 
-help_text = "\n".join([
+help_text = "\n\n".join([
     "help - show this message",
     "@Narrator AI <question> - ask a question, optionally as a reply to another message",
     "summarise [n] - summarise the last n messages",
@@ -155,7 +155,7 @@ class MessageHandler:
             return "Nothing to quote"
         quoted = random.choice(messages)
         senders = await self.client.fetch_user_info(quoted.sender_id)
-        return f"\"{quoted.text}\" - {name_of(senders, quoted.sender_id)}"
+        return f"\"{quoted.text}\" - {name_of(senders, quoted.sender_id)}, {date_time_of(quoted.timestamp)}"
 
     async def search_results_for(self, thread_id, query):
         found = await self.client.search_message(query, thread_id)
@@ -223,6 +223,10 @@ def name_of(senders, sender_id):
 
 def date_of(timestamp_ms):
     return datetime.fromtimestamp(timestamp_ms / 1000).strftime("%d/%m/%y")
+
+
+def date_time_of(timestamp_ms):
+    return datetime.fromtimestamp(timestamp_ms / 1000).strftime("%d/%m/%y %H:%M")
 
 
 def map_link_for(lat, long):
