@@ -1,0 +1,35 @@
+[Unit]
+Description=Narrator Messenger bot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=narrator
+Group=narrator
+WorkingDirectory=/opt/narrator
+ExecStart=/usr/local/bin/uv run --frozen python src/main.py
+Restart=always
+RestartSec=10s
+
+Environment=HOME=/opt/narrator
+Environment=UV_CACHE_DIR=/opt/narrator/.uv-cache
+
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryDenyWriteExecute=false
+ReadWritePaths=/opt/narrator
+
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

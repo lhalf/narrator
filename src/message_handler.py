@@ -1,3 +1,6 @@
+import os
+import random
+import tempfile
 from itertools import islice
 
 from fbchat_muqit import Client, EventType, ImageAttachment
@@ -6,14 +9,35 @@ import bikes
 import command_handler
 import crime
 import generate_image
+import generate_text
 import osrs
 import people
 import speech
 
 cookies_file = "cookies.json"
-generated_image_file = "tmp_image.png"
-voice_clip_file = "tmp.mp3"
-crime_plot_file = "tmp_plot.png"
+temp_directory = tempfile.gettempdir()
+generated_image_file = os.path.join(temp_directory, "narrator_image.png")
+voice_clip_file = os.path.join(temp_directory, "narrator_voice.mp3")
+crime_plot_file = os.path.join(temp_directory, "narrator_plot.png")
+
+batch_size = 50
+default_summary_length = 50
+quote_search_limit = 500
+
+help_text = "\n".join([
+    "help - show this message",
+    "@Narrator AI <question> - ask a question, optionally as a reply to another message",
+    "summarise [n] - summarise the last n messages",
+    "quote - post a random message from this thread",
+    "gen <prompt> - generate an image",
+    "genfill <prompt> - regenerate the masked part of the group photo",
+    "say <text> - reply with a voice clip",
+    "examine <item> - look up the OSRS examine text for an item",
+    "bike <name> - look up a bike's specs",
+    "crime <postcode> - map link and crime plot for a postcode",
+    "echoimages - resend the last 100 images in this thread",
+    "randomimage - count the images in this thread",
+])
 
 
 class MessageHandler:
@@ -29,9 +53,23 @@ class MessageHandler:
         if message.sender_id == self.client.uid:
             return
 
+        if self.is_mentioned_in(message):
+            await self.reply_to_mention(message)
+            return
+
         command, user_input = command_handler.extract_from(message)
 
         match command:
+            case "help":
+                await self.reply_with_text(message, help_text)
+
+            case "summarise":
+                messages = await self.messages_in_thread(message.thread_id, message_count_in(user_input))
+                await self.reply_with_text(message, generate_text.summary_of(await self.transcript_of(messages)))
+
+            case "quote":
+                await self.reply_with_text(message, await self.random_quote_from(message.thread_id))
+
             case "genfill":
                 generate_image.save_filled_at(user_input, "group_full.png", "group.png", generated_image_file)
                 await self.reply_with_local_image_at(message, generated_image_file)
@@ -74,11 +112,46 @@ class MessageHandler:
                 response = self.respond_to.get_response_from_name_and_message(sender_name, message.text)
                 await self.client.send_message(response, message.thread_id)
 
+    def is_mentioned_in(self, message):
+        return any(mention.user_id == self.client.uid for mention in message.mentions or [])
+
+    async def reply_to_mention(self, message):
+        quoted = message.replied_to_message
+        answer = generate_text.answer_to(text_without_mentions(message), quoted.text if quoted else None)
+        await self.reply_with_text(message, answer)
+
+    async def messages_in_thread(self, thread_id, limit):
+        messages = []
+        before = None
+        while len(messages) < limit:
+            batch = await self.client.fetch_thread_messages(thread_id, message_limit=batch_size, before=before)
+            if not batch or batch[0].timestamp == before:
+                break
+            messages = list(batch) + messages
+            before = batch[0].timestamp
+        return messages[-limit:]
+
+    async def transcript_of(self, messages):
+        named = [message for message in messages if message.text]
+        if not named:
+            return ""
+        senders = await self.client.fetch_user_info(*{message.sender_id for message in named})
+        return "\n".join(f"{name_of(senders, message.sender_id)}: {message.text}" for message in named)
+
+    async def random_quote_from(self, thread_id):
+        messages = [message for message in await self.messages_in_thread(thread_id, quote_search_limit)
+                    if message.text and message.sender_id != self.client.uid]
+        if not messages:
+            return "Nothing to quote"
+        quoted = random.choice(messages)
+        senders = await self.client.fetch_user_info(quoted.sender_id)
+        return f"\"{quoted.text}\" - {name_of(senders, quoted.sender_id)}"
+
     async def image_urls_in_thread(self, thread_id, limit):
         image_urls = []
         before = None
         while len(image_urls) < limit:
-            messages = await self.client.fetch_thread_messages(thread_id, message_limit=50, before=before)
+            messages = await self.client.fetch_thread_messages(thread_id, message_limit=batch_size, before=before)
             if not messages or messages[0].timestamp == before:
                 break
             for message in messages:
@@ -106,6 +179,22 @@ class MessageHandler:
 def image_urls_in(message):
     return [attachment.large_preview.url for attachment in message.attachments
             if isinstance(attachment, ImageAttachment) and attachment.large_preview]
+
+
+def text_without_mentions(message):
+    text = message.text or ""
+    for mention in sorted(message.mentions or [], key=lambda mention: mention.offset, reverse=True):
+        text = text[:mention.offset] + text[mention.offset + mention.length:]
+    return text.strip()
+
+
+def message_count_in(user_input):
+    return int(user_input) if user_input.isdigit() else default_summary_length
+
+
+def name_of(senders, sender_id):
+    sender = senders.get(sender_id)
+    return sender.name if sender else "Unknown"
 
 
 def map_link_for(lat, long):

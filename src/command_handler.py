@@ -1,3 +1,5 @@
+import os
+import tempfile
 import unittest
 
 from fbchat_muqit import AudioAttachment
@@ -19,8 +21,9 @@ def extract_from(message_object):
 
 
 def extract_audio_command(attachment):
-    speech.save_audio_from_url(attachment.playable_url, attachment.filename)
-    query = speech.audio_file_to_text_from(attachment.filename).lower().replace(".", "")
+    audio_file = os.path.join(tempfile.gettempdir(), attachment.filename)
+    speech.save_audio_from_url(attachment.playable_url, audio_file)
+    query = speech.audio_file_to_text_from(audio_file).lower().replace(".", "")
     command = query.split()[0]
     return command, query.replace(command, "").strip()
 
