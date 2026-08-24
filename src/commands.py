@@ -137,4 +137,12 @@ async def run(request, text):
 
 
 def help_text():
-    return commands.get_help(click.Context(commands, info_name="")).strip()
+    return "\n\n".join(help_line_for(name, command) for name, command in sorted(commands.commands.items()))
+
+
+def help_line_for(name, command):
+    options = " ".join(option.opts[0] for option in command.params if isinstance(option, click.Option))
+    arguments = " ".join(argument.name.upper() for argument in command.params
+                         if isinstance(argument, click.Argument))
+    usage = " ".join(part for part in [name, f"[{options}]" if options else "", arguments] if part)
+    return f"{usage} - {command.short_help or command.help}"
