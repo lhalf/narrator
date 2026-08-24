@@ -1,7 +1,9 @@
+import asyncio
 import os
 import random
 import re
 import tempfile
+import time
 from datetime import datetime
 from itertools import islice
 
@@ -26,6 +28,7 @@ batch_size = 50
 default_summary_length = 50
 quote_search_limit = 500
 search_result_limit = 10
+seconds_between_sends = 1.5
 
 help_text = "\n\n".join([
     "help - show this message",
@@ -52,6 +55,7 @@ class MessageHandler:
         self.people_to_respond_to = []
         self.respond_to = people.RespondTo(self.people_to_respond_to)
         self.all_bikes = bikes.AllBikes()
+        self.last_sent_at = 0
 
     async def on_message(self, message):
         if message.sender_id == self.client.uid:
@@ -75,7 +79,8 @@ class MessageHandler:
                 await self.reply_with_text(message, await self.random_quote_from(message.thread_id))
 
             case "find":
-                await self.reply_with_text(message, await self.search_results_for(message.thread_id, user_input))
+                for result in await self.search_results_for(message.thread_id, user_input):
+                    await self.reply_with_text(message, result)
 
             case "genfill":
                 generate_image.save_filled_at(user_input, "group_full.png", "group.png", generated_image_file)
@@ -117,6 +122,7 @@ class MessageHandler:
                 if sender_name not in self.people_to_respond_to:
                     return
                 response = self.respond_to.get_response_from_name_and_message(sender_name, message.text)
+                await self.wait_for_send_slot()
                 await self.client.send_message(response, message.thread_id)
 
     def is_mentioned_in(self, message):
@@ -161,9 +167,9 @@ class MessageHandler:
         found = await self.client.search_message(query, thread_id)
         results = found["results"][:search_result_limit]
         if not results:
-            return f"Nothing found for \"{query}\""
-        return "\n".join(f"{date_of(result.timestamp_ms)} {result.sender_name}: {result.snippet}"
-                         for result in results)
+            return [f"Nothing found for \"{query}\""]
+        return [f"{date_of(result.timestamp_ms)} {result.sender_name}: {result.snippet}"
+                for result in results]
 
     async def image_urls_in_thread(self, thread_id, limit):
         image_urls = []
@@ -178,6 +184,7 @@ class MessageHandler:
         return list(islice(image_urls, limit))
 
     async def reply_with_text(self, input_message, text):
+        await self.wait_for_send_slot()
         await self.client.send_message(text, input_message.thread_id, reply_to_message=input_message.id)
 
     async def reply_with_local_image_at(self, input_message, image_path):
@@ -186,12 +193,20 @@ class MessageHandler:
     async def reply_with_local_voice_clip_from(self, input_message, text):
         speech.create_audio_file_from_at(text, voice_clip_file)
         file_ids = await self.client.uploadFiles(file_path=[voice_clip_file], voice_clip=True)
+        await self.wait_for_send_slot()
         await self.client.send_message(None, input_message.thread_id, files_ids=file_ids,
                                        reply_to_message=input_message.id)
 
     async def send_local_image_at(self, thread_id, image_path, reply_to=None):
         file_ids = await self.client.uploadFiles(file_path=[image_path], voice_clip=False)
+        await self.wait_for_send_slot()
         await self.client.send_message(None, thread_id, files_ids=file_ids, reply_to_message=reply_to)
+
+    async def wait_for_send_slot(self):
+        waited = time.monotonic() - self.last_sent_at
+        if waited < seconds_between_sends:
+            await asyncio.sleep(seconds_between_sends - waited)
+        self.last_sent_at = time.monotonic()
 
 
 def image_urls_in(message):
@@ -222,11 +237,11 @@ def name_of(senders, sender_id):
 
 
 def date_of(timestamp_ms):
-    return datetime.fromtimestamp(timestamp_ms / 1000).strftime("%d/%m/%y")
+    return datetime.fromtimestamp(int(timestamp_ms) / 1000).strftime("%d/%m/%y")
 
 
 def date_time_of(timestamp_ms):
-    return datetime.fromtimestamp(timestamp_ms / 1000).strftime("%d/%m/%y %H:%M")
+    return datetime.fromtimestamp(int(timestamp_ms) / 1000).strftime("%d/%m/%y %H:%M")
 
 
 def map_link_for(lat, long):
