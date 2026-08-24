@@ -1,6 +1,8 @@
 import os
 import random
+import re
 import tempfile
+from datetime import datetime
 from itertools import islice
 
 from fbchat_muqit import Client, EventType, ImageAttachment
@@ -23,11 +25,13 @@ crime_plot_file = os.path.join(temp_directory, "narrator_plot.png")
 batch_size = 50
 default_summary_length = 50
 quote_search_limit = 500
+search_result_limit = 10
 
 help_text = "\n".join([
     "help - show this message",
     "@Narrator AI <question> - ask a question, optionally as a reply to another message",
     "summarise [n] - summarise the last n messages",
+    "find <text> - search this thread's history for a phrase",
     "quote - post a random message from this thread",
     "gen <prompt> - generate an image",
     "genfill <prompt> - regenerate the masked part of the group photo",
@@ -69,6 +73,9 @@ class MessageHandler:
 
             case "quote":
                 await self.reply_with_text(message, await self.random_quote_from(message.thread_id))
+
+            case "find":
+                await self.reply_with_text(message, await self.search_results_for(message.thread_id, user_input))
 
             case "genfill":
                 generate_image.save_filled_at(user_input, "group_full.png", "group.png", generated_image_file)
@@ -113,12 +120,15 @@ class MessageHandler:
                 await self.client.send_message(response, message.thread_id)
 
     def is_mentioned_in(self, message):
-        return any(mention.user_id == self.client.uid for mention in message.mentions or [])
+        if any(str(mention.user_id) == str(self.client.uid) for mention in mentions_in(message)):
+            return True
+        return bool(self.client.name) and self.client.name.lower() in (message.text or "").lower()
 
     async def reply_to_mention(self, message):
+        question = text_without(message, self.client.name)
         quoted = message.replied_to_message
-        answer = generate_text.answer_to(text_without_mentions(message), quoted.text if quoted else None)
-        await self.reply_with_text(message, answer)
+        print("Answering mention: " + question)
+        await self.reply_with_text(message, generate_text.answer_to(question, quoted.text if quoted else None))
 
     async def messages_in_thread(self, thread_id, limit):
         messages = []
@@ -146,6 +156,14 @@ class MessageHandler:
         quoted = random.choice(messages)
         senders = await self.client.fetch_user_info(quoted.sender_id)
         return f"\"{quoted.text}\" - {name_of(senders, quoted.sender_id)}"
+
+    async def search_results_for(self, thread_id, query):
+        found = await self.client.search_message(query, thread_id)
+        results = found["results"][:search_result_limit]
+        if not results:
+            return f"Nothing found for \"{query}\""
+        return "\n".join(f"{date_of(result.timestamp_ms)} {result.sender_name}: {result.snippet}"
+                         for result in results)
 
     async def image_urls_in_thread(self, thread_id, limit):
         image_urls = []
@@ -181,11 +199,17 @@ def image_urls_in(message):
             if isinstance(attachment, ImageAttachment) and attachment.large_preview]
 
 
-def text_without_mentions(message):
+def text_without(message, bot_name):
     text = message.text or ""
-    for mention in sorted(message.mentions or [], key=lambda mention: mention.offset, reverse=True):
+    for mention in sorted(mentions_in(message), key=lambda mention: mention.offset, reverse=True):
         text = text[:mention.offset] + text[mention.offset + mention.length:]
-    return text.strip()
+    if bot_name:
+        text = re.sub(re.escape(bot_name), "", text, flags=re.IGNORECASE)
+    return text.strip(" @")
+
+
+def mentions_in(message):
+    return message.mentions if isinstance(message.mentions, list) else []
 
 
 def message_count_in(user_input):
@@ -195,6 +219,10 @@ def message_count_in(user_input):
 def name_of(senders, sender_id):
     sender = senders.get(sender_id)
     return sender.name if sender else "Unknown"
+
+
+def date_of(timestamp_ms):
+    return datetime.fromtimestamp(timestamp_ms / 1000).strftime("%d/%m/%y")
 
 
 def map_link_for(lat, long):

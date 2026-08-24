@@ -6,6 +6,9 @@ import sensitive
 
 client = openai.OpenAI(api_key=sensitive.api_key)
 
+image_size = "1024x1024"
+image_quality = "low"
+
 
 def save_generated_at(message, filepath):
     print("Generating from " + message)
@@ -13,7 +16,8 @@ def save_generated_at(message, filepath):
         model="gpt-image-1",
         prompt=message,
         n=1,
-        size="1024x1024",
+        size=image_size,
+        quality=image_quality,
     )
     write_image_at(response, filepath)
 
@@ -27,7 +31,8 @@ def save_filled_at(message, full_image_path, mask_image_path, filepath):
             mask=mask,
             prompt=message,
             n=1,
-            size="1024x1024",
+            size=image_size,
+            quality=image_quality,
         )
     write_image_at(response, filepath)
 
