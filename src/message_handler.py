@@ -26,6 +26,7 @@ crime_plot_file = os.path.join(temp_directory, "narrator_plot.png")
 
 default_summary_length = 50
 echoed_image_limit = 100
+failure_reason_limit = 200
 
 Command = namedtuple("Command", ["usage", "description", "run", "returns_text"])
 
@@ -61,6 +62,13 @@ class MessageHandler:
         if message.sender_id == self.messenger.uid:
             return
 
+        try:
+            await self.respond_to_message(message)
+        except Exception as error:
+            print(f"Failed to handle message: {error!r}")
+            await self.report_failure(message, error)
+
+    async def respond_to_message(self, message):
         if self.is_mentioned_in(message):
             await self.reply_to_mention(message)
             return
@@ -74,6 +82,12 @@ class MessageHandler:
         text = await command.run(message, user_input)
         if text is not None:
             await self.reply_with_text(message, text)
+
+    async def report_failure(self, message, error):
+        try:
+            await self.reply_with_text(message, failure_message_for(error))
+        except Exception as reporting_error:
+            print(f"Could not report failure: {reporting_error!r}")
 
     async def help(self, message, user_input):
         return "\n\n".join(help_line_for(name, command) for name, command in self.commands.items())
@@ -112,6 +126,9 @@ class MessageHandler:
 
     async def crime(self, message, user_input):
         lat, long = await asyncio.to_thread(crime.get_lat_long_from_postcode, user_input)
+        if lat is None:
+            await self.reply_with_text(message, f"Could not find postcode {user_input}")
+            return
         await self.reply_with_text(message, map_link_for(lat, long))
         await asyncio.to_thread(crime.create_plot_from_postcode_at, user_input, crime_plot_file)
         await self.messenger.send_image(message.thread_id, crime_plot_file, reply_to=message.id)
@@ -164,6 +181,11 @@ def help_line_for(name, command):
     if not command.usage:
         return f"{name} - {command.description}"
     return f"{name} {command.usage} - {command.description}"
+
+
+def failure_message_for(error):
+    reason = str(error).strip() or type(error).__name__
+    return "Sorry, that went wrong: " + reason[:failure_reason_limit]
 
 
 def text_without(message, bot_name):

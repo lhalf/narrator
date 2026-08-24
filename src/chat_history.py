@@ -29,8 +29,23 @@ class ChatHistory:
             "before": before,
         })
         data = {"queries": self.client._graphql.queries_to_json(query)}
-        result = await self.client._state._post(graphql_url, data=data, as_graphql=True)
-        return self.client._parser.parse_thread_message(result)
+        try:
+            result = await self.client._state._post(graphql_url, data=data, as_graphql=True)
+        except Exception as error:
+            print(f"Could not fetch messages: {error}")
+            return []
+        return self.parse_messages(result, thread_id)
+
+    def parse_messages(self, result, thread_id):
+        parsed = (self.parse_message(node, thread_id) for node in message_nodes_in(result))
+        return [message for message in parsed if message]
+
+    def parse_message(self, node, thread_id):
+        try:
+            return self.client._parser.parse_message_from_graphql(node, thread_id)
+        except Exception as error:
+            print(f"Skipping unreadable message: {error}")
+            return None
 
     async def messages_in(self, thread_id, limit):
         messages = []
@@ -51,7 +66,7 @@ class ChatHistory:
         written = [message for message in messages if message.text]
         if not written:
             return ""
-        senders = await self.client.fetch_user_info(*{message.sender_id for message in written})
+        senders = await self.names_for({message.sender_id for message in written})
         return "\n".join(f"{name_of(senders, message.sender_id)}: {message.text}" for message in written)
 
     async def random_quote_from(self, thread_id):
@@ -63,7 +78,7 @@ class ChatHistory:
                         if message.text and message.sender_id != self.client.uid]
             if quotable:
                 quoted = random.choice(quotable)
-                senders = await self.client.fetch_user_info(quoted.sender_id)
+                senders = await self.names_for([quoted.sender_id])
                 return f"\"{quoted.text}\" - {name_of(senders, quoted.sender_id)}, {date_time_of(quoted.timestamp)}"
         return "Nothing to quote"
 
@@ -92,20 +107,40 @@ class ChatHistory:
         return bool(await self.fetch_messages(thread_id, 1, timestamp))
 
     async def search_results_for(self, thread_id, query):
-        found = await self.client.search_message(query, thread_id)
+        try:
+            found = await self.client.search_message(query, thread_id)
+        except Exception as error:
+            print(f"Search failed: {error}")
+            return [f"Search for \"{query}\" failed, try a narrower phrase"]
         results = found["results"][:search_result_limit]
         if not results:
             return [f"Nothing found for \"{query}\""]
         return [f"{date_of(result.timestamp_ms)} {result.sender_name}: {result.snippet}"
                 for result in results]
 
+    async def names_for(self, sender_ids):
+        try:
+            return await self.client.fetch_user_info(*sender_ids)
+        except Exception as error:
+            print(f"Could not fetch user info: {error}")
+            return {}
+
     async def name_for(self, sender_id):
-        return name_of(await self.client.fetch_user_info(sender_id), sender_id)
+        return name_of(await self.names_for([sender_id]), sender_id)
 
 
 def image_urls_in(message):
-    return [attachment.large_preview.url for attachment in message.attachments
+    return [attachment.large_preview.url for attachment in message.attachments or []
             if isinstance(attachment, ImageAttachment) and attachment.large_preview]
+
+
+def message_nodes_in(result):
+    try:
+        thread = result[0]["message_thread"] if isinstance(result, list) else result["message_thread"]
+        return thread["messages"]["nodes"] or []
+    except (KeyError, IndexError, TypeError) as error:
+        print(f"Unexpected thread messages response: {error}")
+        return []
 
 
 def name_of(senders, sender_id):

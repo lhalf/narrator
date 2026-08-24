@@ -73,4 +73,6 @@ class AllBikes:
             if row_lev_distance == 0 and row_year_lev_distance == 0:
                 return self.row_to_message(row)
 
+        if not closest_row:
+            return "No bike found"
         return self.row_to_message(closest_row, "Closest match:\n")
